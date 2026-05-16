@@ -1,4 +1,4 @@
-# billing_gui.py - Enhanced Scrollable GUI for School Billing
+# billing_gui.py - Enhanced Scrollable GUI for School Billing (Fixed Version)
 
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -13,8 +13,6 @@ COLORS = {
     'secondary': '#2196F3',
     'accent': '#FF9800',
     'danger': '#f44336',
-    'success': '#4CAF50',
-    'warning': '#FF9800',
     'bg_light': '#f4f6fb',
     'text_dark': '#333',
     'text_gray': '#777'
@@ -27,7 +25,6 @@ FONT_BUTTONS = ("Segoe UI", 9, "bold")
 # -------------------- Helper functions --------------------
 
 def validate_date(date_str):
-    """Validate YYYY-MM-DD format"""
     if not date_str:
         return True
     pattern = r'^\d{4}-\d{2}-\d{2}$'
@@ -39,8 +36,7 @@ def validate_date(date_str):
     except ValueError:
         return False
 
-def validate_positive_number(value, field_name=""):
-    """Validate that value is a positive number"""
+def validate_positive_number(value):
     try:
         num = float(value)
         return num >= 0, num
@@ -69,16 +65,11 @@ def save_fee_structure():
         entry_class.focus()
         return
 
-    fields = [
-        ('Tuition', entry_tuition),
-        ('Bus', entry_bus),
-        ('Lab', entry_lab),
-        ('Other', entry_other)
-    ]
+    fields = [('Tuition', entry_tuition), ('Bus', entry_bus), ('Lab', entry_lab), ('Other', entry_other)]
 
     fees = {}
     for name, entry_widget in fields:
-        valid, value = validate_positive_number(entry_widget.get(), name)
+        valid, value = validate_positive_number(entry_widget.get())
         if not valid:
             messagebox.showerror("Validation Error", f"Please enter a valid number for {name} Fee.")
             entry_widget.focus()
@@ -113,7 +104,7 @@ def view_fee_structure():
             messagebox.showinfo("Fee Structure Details", message)
             status_var.set(f"Viewed fee structure for {class_name}")
         else:
-            messagebox.showinfo("Not Found", f"No fee structure found for {class_name}. Please save it first.")
+            messagebox.showinfo("Not Found", f"No fee structure found for {class_name}.")
     except Exception as e:
         messagebox.showerror("Error", str(e))
 
@@ -125,6 +116,7 @@ def preview_invoice():
     year_text = entry_year.get().strip()
     student_text = entry_student_id.get().strip()
 
+    # ---------- Basic validation ----------
     if not all([class_name, month, year_text, student_text]):
         messagebox.showerror("Validation Error", "Student ID, class, month, and year are required.")
         return
@@ -143,7 +135,7 @@ def preview_invoice():
         if year < 2000 or year > 2100:
             raise ValueError
     except ValueError:
-        messagebox.showerror("Validation Error", "Year must be a valid number (2000-2100).")
+        messagebox.showerror("Validation Error", "Year must be valid (2000-2100).")
         entry_year.focus()
         return
 
@@ -154,18 +146,64 @@ def preview_invoice():
         messagebox.showerror("Error", f"Failed to calculate fees: {str(e)}")
         return
 
+    # ---------- Orientation ----------
+    orient = orientation_var.get() if 'orientation_var' in globals() else "Portrait"
+
+    # ---------- PREVIEW WINDOW ----------
     preview = tk.Toplevel(root)
     preview.title("Invoice Preview")
-    preview.geometry("450x380")
-    preview.resizable(False, False)
+
+    if orient == "Landscape":
+        preview.geometry("900x500")   # wider
+    else:
+        preview.geometry("750x550")   # taller
+
+    preview.minsize(700, 450)
     preview.configure(bg=COLORS['bg_light'])
     preview.transient(root)
     preview.grab_set()
 
-    card = tk.Frame(preview, bg="white", bd=0, relief="flat", padx=20, pady=15)
-    card.pack(fill="both", expand=True, padx=20, pady=15)
+    # ---------- SCROLLABLE FRAME SETUP ----------
+    outer = tk.Frame(preview, bg=COLORS['bg_light'])
+    outer.pack(fill="both", expand=True, padx=10, pady=10)
 
-    header = tk.Frame(card, bg=COLORS['primary'], height=40)
+    canvas = tk.Canvas(outer, bg=COLORS['bg_light'], highlightthickness=0)
+    vscroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vscroll.set)
+
+    vscroll.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    inner = tk.Frame(canvas, bg=COLORS['bg_light'])
+    canvas_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    def on_inner_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    inner.bind("<Configure>", on_inner_configure)
+
+    def on_canvas_configure(event):
+        canvas.itemconfig(canvas_window, width=event.width)
+    canvas.bind("<Configure>", on_canvas_configure)
+
+    # Mouse wheel only when pointer is inside preview
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _bind_mousewheel(event):
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+    def _unbind_mousewheel(event):
+        canvas.unbind_all("<MouseWheel>")
+
+    inner.bind("<Enter>", _bind_mousewheel)
+    inner.bind("<Leave>", _unbind_mousewheel)
+
+    # ---------- CARD CONTENT ----------
+    card = tk.Frame(inner, bg="white", bd=0, relief="flat", padx=20, pady=15)
+    card.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # Header
+    header = tk.Frame(card, bg=COLORS['primary'], height=50)
     header.pack(fill="x")
     header.pack_propagate(False)
     tk.Label(
@@ -173,53 +211,98 @@ def preview_invoice():
         text="🏫 School Invoice Preview",
         bg=COLORS['primary'],
         fg="white",
-        font=("Segoe UI", 12, "bold"),
-    ).pack(side="left", padx=10, pady=8)
+        font=("Segoe UI", 15, "bold"),
+    ).pack(side="left", padx=15, pady=8)
 
+    # Body
     body = tk.Frame(card, bg="white")
     body.pack(fill="both", expand=True, pady=(15, 5))
 
-    info_frame = tk.Frame(body, bg="white")
-    info_frame.pack(fill="x", pady=(0, 10))
+    # ---------- Layout depends on orientation ----------
+    if orient == "Landscape":
+        # 2-column layout: info left, breakdown right
+        top_row = tk.Frame(body, bg="white")
+        top_row.pack(fill="both", expand=True)
 
-    tk.Label(info_frame, text=f"Student ID: {student_id}", bg="white",
-             fg=COLORS['text_dark'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
-    tk.Label(info_frame, text=f"Class: {class_name}", bg="white",
-             fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
-    tk.Label(info_frame, text=f"Month/Year: {month} {year}", bg="white",
-             fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+        left_col = tk.Frame(top_row, bg="white")
+        left_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-    tk.Frame(body, bg="#e0e0e0", height=2).pack(fill="x", pady=(10, 10))
+        right_col = tk.Frame(top_row, bg="white")
+        right_col.pack(side="left", fill="both", expand=True, padx=(10, 0))
 
-    if fees:
-        tk.Label(body, text="💰 Fee Breakdown", bg="white",
-                 fg=COLORS['text_dark'], font=FONT_HEADINGS, anchor="w").pack(fill="x", pady=(0, 8))
+        # Info on left
+        tk.Label(left_col, text=f"Student ID: {student_id}", bg="white",
+                 fg=COLORS['text_dark'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+        tk.Label(left_col, text=f"Class: {class_name}", bg="white",
+                 fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+        tk.Label(left_col, text=f"Month/Year: {month} {year}", bg="white",
+                 fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
 
-        breakdown_frame = tk.Frame(body, bg="white")
-        breakdown_frame.pack(fill="x")
+        tk.Frame(left_col, bg="#e0e0e0", height=2).pack(fill="x", pady=(10, 10))
 
-        for i, (label, amount) in enumerate([
-            ("Tuition Fee", fees["tuition"]),
-            ("Bus Fee", fees["bus"]),
-            ("Lab Fee", fees["lab"]),
-            ("Other Fee", fees["other"])
-        ]):
-            row = i + 1
-            tk.Label(breakdown_frame, text=label, bg="white",
-                     fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").grid(row=row, column=0, sticky="w", pady=2)
-            tk.Label(breakdown_frame, text=f"Rs. {amount:.2f}", bg="white",
-                     fg=COLORS['text_dark'], font=FONT_LABELS, anchor="e").grid(row=row, column=1, sticky="e", padx=(20, 0))
+        # Breakdown on right
+        if fees:
+            tk.Label(right_col, text="💰 Fee Breakdown", bg="white",
+                     fg=COLORS['text_dark'], font=FONT_HEADINGS, anchor="w").pack(fill="x", pady=(0, 8))
+            breakdown_frame = tk.Frame(right_col, bg="white")
+            breakdown_frame.pack(fill="x")
+            for i, (label_text, amount) in enumerate([
+                ("Tuition Fee", fees["tuition"]),
+                ("Bus Fee", fees["bus"]),
+                ("Lab Fee", fees["lab"]),
+                ("Other Fee", fees["other"])
+            ]):
+                row = i + 1
+                tk.Label(breakdown_frame, text=label_text, bg="white",
+                         fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").grid(row=row, column=0, sticky="w", pady=3)
+                tk.Label(breakdown_frame, text=f"Rs. {amount:.2f}", bg="white",
+                         fg=COLORS['text_dark'], font=FONT_LABELS, anchor="e").grid(row=row, column=1, sticky="e", padx=(40, 0))
 
         tk.Frame(body, bg="#e0e0e0", height=2).pack(fill="x", pady=(10, 10))
 
+    else:
+        # Portrait: vertical layout
+        info_frame = tk.Frame(body, bg="white")
+        info_frame.pack(fill="x", pady=(0, 10))
+
+        tk.Label(info_frame, text=f"Student ID: {student_id}", bg="white",
+                 fg=COLORS['text_dark'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+        tk.Label(info_frame, text=f"Class: {class_name}", bg="white",
+                 fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+        tk.Label(info_frame, text=f"Month/Year: {month} {year}", bg="white",
+                 fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+
+        tk.Frame(body, bg="#e0e0e0", height=2).pack(fill="x", pady=(10, 10))
+
+        if fees:
+            tk.Label(body, text="💰 Fee Breakdown", bg="white",
+                     fg=COLORS['text_dark'], font=FONT_HEADINGS, anchor="w").pack(fill="x", pady=(0, 8))
+            breakdown_frame = tk.Frame(body, bg="white")
+            breakdown_frame.pack(fill="x")
+            for i, (label_text, amount) in enumerate([
+                ("Tuition Fee", fees["tuition"]),
+                ("Bus Fee", fees["bus"]),
+                ("Lab Fee", fees["lab"]),
+                ("Other Fee", fees["other"])
+            ]):
+                row = i + 1
+                tk.Label(breakdown_frame, text=label_text, bg="white",
+                         fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").grid(row=row, column=0, sticky="w", pady=3)
+                tk.Label(breakdown_frame, text=f"Rs. {amount:.2f}", bg="white",
+                         fg=COLORS['text_dark'], font=FONT_LABELS, anchor="e").grid(row=row, column=1, sticky="e", padx=(40, 0))
+
+        tk.Frame(body, bg="#e0e0e0", height=2).pack(fill="x", pady=(10, 10))
+
+    # Total section (same for both)
     total_frame = tk.Frame(body, bg="white")
-    total_frame.pack(fill="x")
+    total_frame.pack(fill="x", pady=(5, 10))
 
     tk.Label(total_frame, text="💵 Total Payable", bg="white",
-             fg=COLORS['text_dark'], font=("Segoe UI", 12, "bold"), anchor="w").pack(side="left")
+             fg=COLORS['text_dark'], font=("Segoe UI", 13, "bold"), anchor="w").pack(side="left")
     tk.Label(total_frame, text=f"Rs. {total:.2f}", bg="white",
-             fg=COLORS['primary'], font=("Segoe UI", 14, "bold"), anchor="e").pack(side="right")
+             fg=COLORS['primary'], font=("Segoe UI", 16, "bold"), anchor="e").pack(side="right")
 
+    # Footer buttons
     footer = tk.Frame(card, bg="white")
     footer.pack(fill="x", pady=(15, 0))
 
@@ -234,7 +317,7 @@ def preview_invoice():
         activebackground="#e0e0e0",
         relief="flat",
         font=FONT_BUTTONS,
-        padx=15, pady=8
+        padx=18, pady=8
     )
     btn_cancel.pack(side="right", padx=5)
 
@@ -246,7 +329,7 @@ def preview_invoice():
         activebackground=COLORS['primary_dark'],
         relief="flat",
         font=FONT_BUTTONS,
-        padx=15, pady=8
+        padx=18, pady=8
     )
     btn_confirm.pack(side="right", padx=5)
 
@@ -282,17 +365,12 @@ def create_invoice():
         return
 
     try:
-        invoice_id = billing.generate_invoice(
-            student_id=student_id,
-            class_name=class_name,
-            month=month,
-            year=year,
-            due_date=due_date
-        )
+        invoice_id = billing.generate_invoice(student_id=student_id, class_name=class_name,
+                                              month=month, year=year, due_date=due_date)
         messagebox.showinfo("✓ Success", f"Invoice created successfully!\nInvoice ID: {invoice_id}")
         entry_invoice_id_payment.delete(0, tk.END)
         entry_invoice_id_payment.insert(0, str(invoice_id))
-        status_var.set(f"Invoice {invoice_id} created for Student {student_id} at {datetime.now().strftime('%H:%M:%S')}")
+        status_var.set(f"Invoice {invoice_id} created for Student {student_id}")
         clear_invoice()
     except Exception as e:
         messagebox.showerror("Error", f"Failed to create invoice: {str(e)}")
@@ -313,17 +391,11 @@ def view_invoice():
         invoice = billing.get_invoice(invoice_id)
         if invoice:
             message = f"📄 Invoice Details\n{'═' * 40}\n"
-            message += f"Invoice ID: {invoice['id']}\n"
-            message += f"Student ID: {invoice['student_id']}\n"
-            message += f"Class: {invoice['class_name']}\n"
-            message += f"Month/Year: {invoice['month']}/{invoice['year']}\n"
+            message += f"Invoice ID: {invoice['id']}\nStudent ID: {invoice['student_id']}\n"
+            message += f"Class: {invoice['class_name']}\nMonth/Year: {invoice['month']}/{invoice['year']}\n"
             message += f"{'─' * 40}\n"
-            message += f"Total Amount: Rs. {invoice['total_amount']:.2f}\n"
-            message += f"Paid Amount: Rs. {invoice['paid_amount']:.2f}\n"
-            message += f"Due Amount: Rs. {invoice['due_amount']:.2f}\n"
-            message += f"Status: {invoice['status'].upper()}\n"
-            if invoice.get('due_date'):
-                message += f"Due Date: {invoice['due_date']}"
+            message += f"Total: Rs. {invoice['total_amount']:.2f}\nPaid: Rs. {invoice['paid_amount']:.2f}\n"
+            message += f"Due: Rs. {invoice['due_amount']:.2f}\nStatus: {invoice['status'].upper()}"
             messagebox.showinfo(f"Invoice #{invoice_id}", message)
             status_var.set(f"Viewed invoice {invoice_id}")
         else:
@@ -360,18 +432,199 @@ def make_payment():
 
     try:
         billing.record_payment(invoice_id, amount, method, txn)
-        messagebox.showinfo("✓ Payment Recorded", f"Payment of Rs. {amount:.2f} recorded successfully for Invoice #{invoice_id}")
-        status_var.set(f"Payment of Rs. {amount} recorded for invoice {invoice_id} at {datetime.now().strftime('%H:%M:%S')}")
+        messagebox.showinfo("✓ Payment Recorded", f"Payment of Rs. {amount:.2f} recorded for Invoice #{invoice_id}")
+        status_var.set(f"Payment of Rs. {amount} recorded for invoice {invoice_id}")
         clear_payment()
     except Exception as e:
         messagebox.showerror("Error", f"Failed to record payment: {str(e)}")
+
+def preview_payment():
+    # Get and validate invoice id
+    try:
+        invoice_id = int(entry_invoice_id_payment.get())
+        if invoice_id <= 0:
+            raise ValueError
+    except ValueError:
+        messagebox.showerror("Validation Error", "Enter a valid Invoice ID for payment preview.")
+        entry_invoice_id_payment.focus()
+        return
+
+    # Get payment amount, method, txn (but do not record yet)
+    try:
+        amount = float(entry_amount.get())
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        messagebox.showerror("Validation Error", "Enter a valid positive payment amount.")
+        entry_amount.focus()
+        return
+
+    method = entry_method.get().strip().lower() or "cash"
+    if method not in ["cash", "bank", "online"]:
+        messagebox.showerror("Validation Error", "Method must be cash, bank, or online.")
+        entry_method.focus()
+        return
+
+    txn = entry_txn.get().strip() or "N/A"
+
+    # Fetch invoice details to show context
+    try:
+        invoice = billing.get_invoice(invoice_id)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load invoice: {str(e)}")
+        return
+
+    if not invoice:
+        messagebox.showerror("Not Found", f"Invoice #{invoice_id} not found.")
+        return
+
+    # ---------- PREVIEW WINDOW ----------
+    preview = tk.Toplevel(root)
+    preview.title(f"Payment Preview - Invoice #{invoice_id}")
+    preview.geometry("700x500")
+    preview.minsize(650, 400)
+    preview.configure(bg=COLORS['bg_light'])
+    preview.transient(root)
+    preview.grab_set()
+
+    # ---------- SCROLLABLE FRAME ----------
+    outer = tk.Frame(preview, bg=COLORS['bg_light'])
+    outer.pack(fill="both", expand=True, padx=10, pady=10)
+
+    canvas = tk.Canvas(outer, bg=COLORS['bg_light'], highlightthickness=0)
+    vscroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vscroll.set)
+
+    vscroll.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    inner = tk.Frame(canvas, bg=COLORS['bg_light'])
+    canvas_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    def on_inner_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    inner.bind("<Configure>", on_inner_configure)
+
+    def on_canvas_configure(event):
+        canvas.itemconfig(canvas_window, width=event.width)
+    canvas.bind("<Configure>", on_canvas_configure)
+
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _bind_mousewheel(event):
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+    def _unbind_mousewheel(event):
+        canvas.unbind_all("<MouseWheel>")
+
+    inner.bind("<Enter>", _bind_mousewheel)
+    inner.bind("<Leave>", _unbind_mousewheel)
+
+    # ---------- CARD ----------
+    card = tk.Frame(inner, bg="white", bd=0, relief="flat", padx=20, pady=15)
+    card.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # Header
+    header = tk.Frame(card, bg=COLORS['secondary'], height=50)
+    header.pack(fill="x")
+    header.pack_propagate(False)
+    tk.Label(
+        header,
+        text=f"💳 Payment Preview - Invoice #{invoice_id}",
+        bg=COLORS['secondary'],
+        fg="white",
+        font=("Segoe UI", 14, "bold"),
+    ).pack(side="left", padx=15, pady=8)
+
+    # Body
+    body = tk.Frame(card, bg="white")
+    body.pack(fill="both", expand=True, pady=(15, 5))
+
+    # Invoice summary
+    inv_frame = tk.LabelFrame(body, text="Invoice Summary", bg="white",
+                              font=FONT_HEADINGS, fg=COLORS['text_dark'])
+    inv_frame.pack(fill="x", pady=(0, 10))
+
+    tk.Label(inv_frame, text=f"Student ID: {invoice['student_id']}", bg="white",
+             fg=COLORS['text_dark'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+    tk.Label(inv_frame, text=f"Class: {invoice['class_name']}", bg="white",
+             fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+    tk.Label(inv_frame, text=f"Month/Year: {invoice['month']} {invoice['year']}", bg="white",
+             fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+
+    tk.Label(inv_frame, text=f"Total: Rs. {invoice['total_amount']:.2f}", bg="white",
+             fg=COLORS['text_dark'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+    tk.Label(inv_frame, text=f"Already Paid: Rs. {invoice['paid_amount']:.2f}", bg="white",
+             fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+    tk.Label(inv_frame, text=f"Current Due: Rs. {invoice['due_amount']:.2f}", bg="white",
+             fg=COLORS['danger'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=2)
+
+    tk.Frame(body, bg="#e0e0e0", height=2).pack(fill="x", pady=(10, 10))
+
+    # Payment details
+    pay_frame = tk.LabelFrame(body, text="This Payment", bg="white",
+                              font=FONT_HEADINGS, fg=COLORS['text_dark'])
+    pay_frame.pack(fill="x", pady=(0, 10))
+
+    tk.Label(pay_frame, text=f"Amount to Pay: Rs. {amount:.2f}", bg="white",
+             fg=COLORS['primary'], font=("Segoe UI", 12, "bold"), anchor="w").pack(fill="x", pady=3)
+    tk.Label(pay_frame, text=f"Method: {method.upper()}", bg="white",
+             fg=COLORS['text_dark'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=3)
+    tk.Label(pay_frame, text=f"Transaction Ref: {txn}", bg="white",
+             fg=COLORS['text_gray'], font=FONT_LABELS, anchor="w").pack(fill="x", pady=3)
+
+    # Projected new balance
+    new_paid = invoice['paid_amount'] + amount
+    new_due = invoice['total_amount'] - new_paid
+    if new_due < 0:
+        new_due_text = f"Overpayment by Rs. {abs(new_due):.2f}"
+        new_due_color = COLORS['danger']
+    else:
+        new_due_text = f"New Due After Payment: Rs. {new_due:.2f}"
+        new_due_color = COLORS['text_dark']
+
+    tk.Label(pay_frame, text=new_due_text, bg="white",
+             fg=new_due_color, font=FONT_LABELS, anchor="w").pack(fill="x", pady=3)
+
+    # Footer buttons
+    footer = tk.Frame(card, bg="white")
+    footer.pack(fill="x", pady=(15, 0))
+
+    def confirm_and_pay():
+        preview.destroy()
+        make_payment()
+
+    btn_cancel = tk.Button(
+        footer, text="❌ Cancel",
+        command=preview.destroy,
+        bg="#f5f5f5", fg="#555",
+        activebackground="#e0e0e0",
+        relief="flat",
+        font=FONT_BUTTONS,
+        padx=18, pady=8
+    )
+    btn_cancel.pack(side="right", padx=5)
+
+    btn_confirm = tk.Button(
+        footer,
+        text=f"✅ Confirm & Record Payment (Rs. {amount:.2f})",
+        command=confirm_and_pay,
+        bg=COLORS['primary'], fg="white",
+        activebackground=COLORS['primary_dark'],
+        relief="flat",
+        font=FONT_BUTTONS,
+        padx=18, pady=8
+    )
+    btn_confirm.pack(side="right", padx=5)
+
+    status_var.set(f"Previewed payment of Rs. {amount:.2f} for invoice {invoice_id}")
 
 def show_payment_history():
     try:
         history = billing.get_payment_history()
         if history:
-            report = "📊 Payment History (Last 10)\n"
-            report += "═" * 60 + "\n"
+            report = "📊 Payment History (Last 10)\n" + "═" * 60 + "\n"
             for payment in history[-10:][::-1]:
                 report += f"ID:{payment['invoice_id']} | Rs.{payment['amount']:.2f} | {payment['method']:.6} | {payment['payment_date']}\n"
             report += "═" * 60
@@ -405,39 +658,10 @@ def clear_invoice():
 def clear_payment():
     entry_invoice_id_payment.delete(0, tk.END)
     entry_amount.delete(0, tk.END)
-    entry_method.delete(0, tk.END)
     entry_method.set("cash")
     entry_txn.delete(0, tk.END)
     entry_invoice_id_payment.focus()
     status_var.set("Payment form cleared")
-
-# -------------------- Scrollable Canvas Helper --------------------
-
-def create_scrollable_frame(parent):
-    """Create a scrollable frame with scrollbar"""
-    container = tk.Frame(parent, bg=COLORS['bg_light'])
-    container.pack(fill="both", expand=True)
-
-    canvas = tk.Canvas(container, bg=COLORS['bg_light'], highlightthickness=0)
-    scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-    scrollbar.pack(side="right", fill="y")
-    canvas.pack(side="left", fill="both", expand=True)
-
-    canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-
-    scrollable_frame = tk.Frame(canvas, bg=COLORS['bg_light'])
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-
-    # Bind mousewheel to scroll
-    def _on_mousewheel(event):
-        canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-    canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
-    # Update scroll region when frame size changes
-    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-
-    return container, canvas, scrollable_frame
 
 # -------------------- GUI setup --------------------
 
@@ -448,32 +672,42 @@ if not db_success:
 
 root = tk.Tk()
 root.title("🏫 School Billing System")
-root.geometry("520x700")
+root.geometry("520x750")
 root.configure(bg=COLORS['bg_light'])
 
-# Create scrollable frame
-container, canvas, scrollable_frame = create_scrollable_frame(root)
+# Create main canvas with scrollbar
+main_canvas = tk.Canvas(root, bg=COLORS['bg_light'], highlightthickness=0)
+scrollbar = ttk.Scrollbar(root, orient="vertical", command=main_canvas.yview)
+scrollable_frame = tk.Frame(main_canvas, bg=COLORS['bg_light'])
 
-# Status bar at bottom (outside scrollable area)
+scrollable_frame.bind(
+    "<Configure>",
+    lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+)
+
+main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+main_canvas.configure(yscrollcommand=scrollbar.set)
+
+# Mousewheel scrolling
+def _on_mousewheel(event):
+    main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+# Pack canvas and scrollbar
+main_canvas.pack(side="left", fill="both", expand=True)
+scrollbar.pack(side="right", fill="y")
+
+# Status bar (outside scrollable area)
 status_var = tk.StringVar()
 status_var.set("✓ Ready - Database initialized successfully")
-status_bar = tk.Label(
-    root, textvariable=status_var,
-    bd=1, relief=tk.SUNKEN, anchor=tk.W,
-    padx=10, pady=5,
-    bg=COLORS['primary'], fg="white",
-    font=("Segoe UI", 9)
-)
-status_bar.pack(side="bottom", fill="x", padx=5, pady=(0, 5))
+status_bar = tk.Label(root, textvariable=status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W,
+                     padx=10, pady=5, bg=COLORS['primary'], fg="white", font=("Segoe UI", 9))
+status_bar.pack(side="bottom", fill="x")
 
 def create_styled_frame(parent, title):
-    frame = tk.LabelFrame(
-        parent, text=title,
-        padx=15, pady=15,
-        font=FONT_HEADINGS,
-        bg="white", fg=COLORS['text_dark'],
-        relief="flat", bd=2
-    )
+    frame = tk.LabelFrame(parent, text=title, padx=15, pady=15, font=FONT_HEADINGS,
+                          bg="white", fg=COLORS['text_dark'], relief="flat", bd=2)
     frame.columnconfigure(1, weight=1)
     return frame
 
@@ -501,29 +735,20 @@ tk.Label(frame_fee, text="Other Fee (Rs.):", font=FONT_LABELS, bg="white", ancho
 entry_other = tk.Entry(frame_fee, width=25, font=FONT_LABELS)
 entry_other.grid(row=4, column=1, padx=5, pady=5, sticky="we")
 
-btn_save_fee = tk.Button(
-    frame_fee, text="💾 Save Fee Structure", command=save_fee_structure,
-    bg=COLORS['primary'], fg="white",
-    activebackground=COLORS['primary_dark'],
-    relief="flat", font=FONT_BUTTONS, padx=15, pady=8
-)
-btn_save_fee.grid(row=5, column=0, columnspan=2, pady=10, sticky="we")
+tk.Button(frame_fee, text="💾 Save Fee Structure", command=save_fee_structure,
+          bg=COLORS['primary'], fg="white", activebackground=COLORS['primary_dark'],
+          relief="flat", font=FONT_BUTTONS, padx=15, pady=8
+          ).grid(row=5, column=0, columnspan=2, pady=10, sticky="we")
 
-btn_view_fee = tk.Button(
-    frame_fee, text="👁️ View Fee", command=view_fee_structure,
-    bg=COLORS['secondary'], fg="white",
-    activebackground="#1976D2",
-    relief="flat", font=FONT_BUTTONS, padx=10, pady=6
-)
-btn_view_fee.grid(row=6, column=0, pady=5, sticky="we")
+tk.Button(frame_fee, text="👁️ View Fee", command=view_fee_structure,
+          bg=COLORS['secondary'], fg="white", activebackground="#1976D2",
+          relief="flat", font=FONT_BUTTONS, padx=10, pady=6
+          ).grid(row=6, column=0, pady=5, sticky="we")
 
-btn_clear_fee = tk.Button(
-    frame_fee, text="🗑️ Clear", command=clear_fee,
-    bg=COLORS['danger'], fg="white",
-    activebackground="#d32f2f",
-    relief="flat", font=FONT_BUTTONS, padx=10, pady=6
-)
-btn_clear_fee.grid(row=6, column=1, pady=5, sticky="we")
+tk.Button(frame_fee, text="🗑️ Clear", command=clear_fee,
+          bg=COLORS['danger'], fg="white", activebackground="#d32f2f",
+          relief="flat", font=FONT_BUTTONS, padx=10, pady=6
+          ).grid(row=6, column=1, pady=5, sticky="we")
 
 # Invoice frame
 frame_invoice = create_styled_frame(scrollable_frame, "📄 Generate Invoice")
@@ -549,29 +774,35 @@ tk.Label(frame_invoice, text="Due Date (YYYY-MM-DD):", font=FONT_LABELS, bg="whi
 entry_due_date = tk.Entry(frame_invoice, width=25, font=FONT_LABELS)
 entry_due_date.grid(row=4, column=1, padx=5, pady=5, sticky="we")
 
-btn_preview_inv = tk.Button(
-    frame_invoice, text="🔍 Preview Invoice", command=preview_invoice,
-    bg=COLORS['accent'], fg="white",
-    activebackground="#F57C00",
-    relief="flat", font=FONT_BUTTONS, padx=15, pady=8
-)
-btn_preview_inv.grid(row=5, column=0, columnspan=2, pady=10, sticky="we")
+# Orientation controls
+tk.Label(frame_invoice, text="Orientation:", font=FONT_LABELS, bg="white", anchor="e")\
+    .grid(row=5, column=0, sticky="e", pady=5)
 
-btn_create_invoice = tk.Button(
-    frame_invoice, text="✅ Create Invoice", command=create_invoice,
-    bg=COLORS['primary'], fg="white",
-    activebackground=COLORS['primary_dark'],
-    relief="flat", font=FONT_BUTTONS, padx=15, pady=6
+orientation_var = tk.StringVar(value="Portrait")
+orientation_combo = ttk.Combobox(
+    frame_invoice,
+    textvariable=orientation_var,
+    values=["Portrait", "Landscape"],
+    state="readonly",
+    font=FONT_LABELS,
+    width=22
 )
-btn_create_invoice.grid(row=6, column=0, pady=5, sticky="we")
+orientation_combo.grid(row=5, column=1, padx=5, pady=5, sticky="we")
 
-btn_clear_invoice = tk.Button(
-    frame_invoice, text="🗑️ Clear", command=clear_invoice,
-    bg=COLORS['danger'], fg="white",
-    activebackground="#d32f2f",
-    relief="flat", font=FONT_BUTTONS, padx=15, pady=6
-)
-btn_clear_invoice.grid(row=6, column=1, pady=5, sticky="we")
+tk.Button(frame_invoice, text="🔍 Preview Invoice", command=preview_invoice,
+          bg=COLORS['accent'], fg="white", activebackground="#F57C00",
+          relief="flat", font=FONT_BUTTONS, padx=15, pady=8
+          ).grid(row=6, column=0, columnspan=2, pady=10, sticky="we")
+
+tk.Button(frame_invoice, text="✅ Create Invoice", command=create_invoice,
+          bg=COLORS['primary'], fg="white", activebackground=COLORS['primary_dark'],
+          relief="flat", font=FONT_BUTTONS, padx=15, pady=6
+          ).grid(row=7, column=0, pady=5, sticky="we")
+
+tk.Button(frame_invoice, text="🗑️ Clear", command=clear_invoice,
+          bg=COLORS['danger'], fg="white", activebackground="#d32f2f",
+          relief="flat", font=FONT_BUTTONS, padx=15, pady=6
+          ).grid(row=7, column=1, pady=5, sticky="we")
 
 # Payment frame
 frame_payment = create_styled_frame(scrollable_frame, "💳 Record Payment")
@@ -594,37 +825,30 @@ tk.Label(frame_payment, text="Transaction Ref:", font=FONT_LABELS, bg="white", a
 entry_txn = tk.Entry(frame_payment, width=25, font=FONT_LABELS)
 entry_txn.grid(row=3, column=1, padx=5, pady=5, sticky="we")
 
-btn_view_inv = tk.Button(
-    frame_payment, text="👁️ View Invoice", command=view_invoice,
-    bg=COLORS['secondary'], fg="white",
-    activebackground="#1976D2",
-    relief="flat", font=FONT_BUTTONS, padx=10, pady=6
-)
-btn_view_inv.grid(row=4, column=0, pady=5, sticky="we")
+tk.Button(frame_payment, text="👁️ View Invoice", command=view_invoice,
+          bg=COLORS['secondary'], fg="white", activebackground="#1976D2",
+          relief="flat", font=FONT_BUTTONS, padx=10, pady=6
+          ).grid(row=4, column=0, pady=5, sticky="we")
 
-btn_payment = tk.Button(
-    frame_payment, text="✅ Record Payment", command=make_payment,
-    bg=COLORS['primary'], fg="white",
-    activebackground=COLORS['primary_dark'],
-    relief="flat", font=FONT_BUTTONS, padx=10, pady=6
-)
-btn_payment.grid(row=4, column=1, pady=5, sticky="we")
+tk.Button(frame_payment, text="✅ Record Payment", command=make_payment,
+          bg=COLORS['primary'], fg="white", activebackground=COLORS['primary_dark'],
+          relief="flat", font=FONT_BUTTONS, padx=10, pady=6
+          ).grid(row=4, column=1, pady=5, sticky="we")
 
-btn_history = tk.Button(
-    frame_payment, text="📊 Payment History", command=show_payment_history,
-    bg=COLORS['secondary'], fg="white",
-    activebackground="#1976D2",
-    relief="flat", font=FONT_BUTTONS, padx=15, pady=8
-)
-btn_history.grid(row=5, column=0, columnspan=2, pady=10, sticky="we")
+tk.Button(frame_payment, text="🖨️ Preview Payment", command=preview_payment,
+          bg=COLORS['accent'], fg="white", activebackground="#F57C00",
+          relief="flat", font=FONT_BUTTONS, padx=10, pady=6
+          ).grid(row=5, column=0, columnspan=2, pady=5, sticky="we")
 
-btn_clear_payment = tk.Button(
-    frame_payment, text="🗑️ Clear", command=clear_payment,
-    bg=COLORS['danger'], fg="white",
-    activebackground="#d32f2f",
-    relief="flat", font=FONT_BUTTONS, padx=15, pady=6
-)
-btn_clear_payment.grid(row=6, column=0, columnspan=2, pady=5, sticky="we")
+tk.Button(frame_payment, text="📊 Payment History", command=show_payment_history,
+          bg=COLORS['secondary'], fg="white", activebackground="#1976D2",
+          relief="flat", font=FONT_BUTTONS, padx=15, pady=8
+          ).grid(row=6, column=0, columnspan=2, pady=10, sticky="we")
+
+tk.Button(frame_payment, text="🗑️ Clear", command=clear_payment,
+          bg=COLORS['danger'], fg="white", activebackground="#d32f2f",
+          relief="flat", font=FONT_BUTTONS, padx=15, pady=6
+          ).grid(row=7, column=0, columnspan=2, pady=5, sticky="we")
 
 # Keyboard shortcuts
 root.bind('<Control-s>', lambda e: save_fee_structure())
@@ -635,13 +859,8 @@ root.bind('<Control-h>', lambda e: show_payment_history())
 root.bind('<Control-c>', lambda e: clear_fee())
 
 # Instruction label
-tk.Label(
-    scrollable_frame,
-    text="⌨️ Shortcuts: Ctrl+S=Save | Ctrl+V=View | Ctrl+I=Preview | Ctrl+P=Pay | Ctrl+H=History | Ctrl+C=Clear",
-    fg=COLORS['text_gray'],
-    font=("Segoe UI", 8),
-    bg=COLORS['bg_light']
-).pack(pady=10)
+tk.Label(scrollable_frame, text="⌨️ Shortcuts: Ctrl+S=Save | Ctrl+V=View | Ctrl+I=Preview | Ctrl+P=Pay | Ctrl+H=History",
+        fg=COLORS['text_gray'], font=("Segoe UI", 8), bg=COLORS['bg_light']).pack(pady=10)
 
 # Focus first field
 root.after(100, entry_class.focus)
