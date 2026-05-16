@@ -5,7 +5,7 @@ SCHOOL_NAME = "Triyuga Secondary School"
 SCHOOL_ADDRESS = "Triyuga, Koshi Province, Nepal"
 SCHOOL_PHONE = "+977-1-4567890"
 SCHOOL_EMAIL = "info@triyugaschool.edu.np"
-SCHOOL_WEBSITE = "www.triyugaschool.edu.np"
+SCHOOL_WEBSITE = "https://www.triyugaschool.edu.np"
 
 # Colors (Hex codes)
 PRIMARY_COLOR = "#4CAF50"    # Green (header, main buttons)
@@ -23,12 +23,12 @@ ACADEMIC_YEAR = "2025/2026"  # or "2082/2083" for Nepali calendar
 # Grade System
 GRADE_SYSTEM = {
     "A+": (90, 100),
-    "A": (80, 89),
+    "A":  (80, 89),
     "B+": (70, 79),
-    "B": (60, 69),
-    "C": (50, 59),
-    "D": (40, 49),
-    "F": (0, 39)
+    "B":  (60, 69),
+    "C":  (50, 59),
+    "D":  (40, 49),
+    "F":  (0, 39),
 }
 
 # Subjects (for your school)
@@ -41,5 +41,4 @@ SUBJECTS = [
     "Computer",
     "Economics",
     "Accounting",
-   
 ]
